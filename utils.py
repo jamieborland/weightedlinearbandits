@@ -22,7 +22,7 @@ plt.rc("lines", linewidth=3)
 matplotlib.rc('xtick', labelsize=20)
 matplotlib.rc('ytick', labelsize=20)
 matplotlib.rc('font', weight='bold')
-matplotlib.rcParams['text.latex.preamble'] = [r"\usepackage{amsmath} \boldmath"]
+matplotlib.rcParams['text.latex.preamble'] = r"\usepackage{amsmath} \boldmath"
 styles = ['o', '^', 's', 'D', 'p', 'v', '*']
 colors = current_palette[0:11]
 
