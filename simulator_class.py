@@ -67,7 +67,8 @@ class Simulator(object):
                     temp = np.cumsum(regret[nb_process][nb_exp * n_policies * steps + i * steps:
                                                         nb_exp * n_policies * steps + i * steps + steps])
                     dico_pol[name][nb_process * n_mc + nb_exp, :] = np.take(temp, t_saved)
-        print('Conversion time:', time.time() - tdeb)
+        if self.verbose:
+            print('Conversion time:', time.time() - tdeb)
         return dico_pol
 
     def simulation_parallel(self, l, steps, n_mc, regret):
@@ -184,7 +185,8 @@ class Simulator(object):
         for j in jobs:
             j.join()
         t1 = time.time() - t0
-        print('Total Time Experiment: ', t1)
+        if self.verbose:
+            print('Total Time Experiment: ', t1)
         dico_pol = self.from_proxy_dict_to_cumregret(regret, n_mc // n_process, steps, n_process, t_saved)
         t = time.time()
         for policy in self.policies:
@@ -192,7 +194,8 @@ class Simulator(object):
             avg_regret[name] = np.mean(dico_pol[name], 0)
             q_regret[name] = np.percentile(dico_pol[name], q, 0)
             up_q_regret[name] = np.percentile(dico_pol[name], 100 - q, 0)
-        print('Post-Processing Time:', time.time() - t)
+        if self.verbose:
+            print('Post-Processing Time:', time.time() - t)
         return avg_regret, q_regret, up_q_regret
 
     def run_multiprocessing_smooth(self, n_process, step_1, steps, n_mc, R, angle_init, angle_end, q, t_saved=None):
@@ -223,7 +226,8 @@ class Simulator(object):
         for j in jobs:
             j.join()
         t1 = time.time() - t0
-        print('Total Time Experiment: ', t1)
+        if self.verbose:  
+            print('Total Time Experiment: ', t1)
         dico_pol = self.from_proxy_dict_to_cumregret(regret, n_mc // n_process, steps, n_process, t_saved)
         t = time.time()
         for policy in self.policies:
@@ -231,7 +235,8 @@ class Simulator(object):
             avg_regret[name] = np.mean(dico_pol[name], 0)
             q_regret[name] = np.percentile(dico_pol[name], q, 0)
             up_q_regret[name] = np.percentile(dico_pol[name], 100 - q, 0)
-        print('Post-Processing Time:', time.time() - t)
+            if self.verbose:  
+                print('Post-Processing Time:', time.time() - t)
         return avg_regret, q_regret, up_q_regret
 
     def run(self, steps, n_mc, q, n_scatter, t_saved=None):
