@@ -34,7 +34,7 @@ class FiniteGradDLinUCB(DLinUCB):
             new_gamma (float): The new value for the discount factor.
         """
         # Keep gamma within a reasonable, stable range to prevent divergence.
-        self.gamma = np.clip(new_gamma, 0.9, 0.9999)
+        self.gamma = np.clip(new_gamma, 0.0, 0.999999)
 
     def __str__(self):
         """
