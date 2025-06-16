@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Jun 12 17:03:40 2025
+A finite difference approach used to show convergence to to theoretical optimal gamma. 
+This is a first step in exemplifying the use of gradient based methods in linear bandits for non stationary environments.
+
 
 @author: jamie
 """
@@ -65,11 +68,76 @@ def run_simulation_for_policy(policy_to_test, n_mc, d, k, steps, step_1, sigma_n
                                                              n_mc=n_mc, R=R, angle_init=angle_init, 
                                                              angle_end=angle_end, q=q, t_saved=t_saved)
     
-    # Extract the final cumulative regret for the policy that was tested
+    # Extract the final cumulative regret for the po}licy that was tested
     # We use str(policy) as the key to avoid the errors we saw earlier
     final_cumulative_regret = avgRegret[str(policy_to_test)][-1]
     
-    return final_cumulative_regret    
+    return final_cumulative_regret
+def calculate_gradient(policy_to_update, sim_params, h):
+    """
+    Calculates the gradient of the reward with respect to gamma using a robust
+    finite difference method that handles boundaries.
+
+    It uses a centered difference when possible, and a one-sided difference
+    at the boundaries of the [0, 1] interval.
+    """
+    current_gamma = policy_to_update.gamma
+    
+    # We must ensure both points we test are valid
+    gamma_plus_h = current_gamma + h
+    gamma_minus_h = current_gamma - h
+
+    # To be safe, we run both simulations with the same seed.
+    seed = int(time.time()) # Use a different seed for each gradient calculation
+    
+    # Case 1: We are too close to the upper boundary (gamma=1)
+    if gamma_plus_h > 1.0:
+        print("    (Using backward difference at upper boundary)")
+        # --- Calculate reward at gamma ---
+        np.random.seed(seed)
+        policy1 = DLinUCB(d, delta, alpha, lambda_, s, current_gamma, 'temp1', False, sigma_noise, False)
+        reward1 = -run_simulation_for_policy(policy1, **sim_params)
+        
+        # --- Calculate reward at gamma - h ---
+        np.random.seed(seed)
+        policy2 = DLinUCB(d, delta, alpha, lambda_, s, gamma_minus_h, 'temp2', False, sigma_noise, False)
+        reward2 = -run_simulation_for_policy(policy2, **sim_params)
+        
+        # Backward difference gradient
+        gradient = (reward1 - reward2) / h
+        
+    # Case 2: We are too close to the lower boundary (gamma=0)
+    elif gamma_minus_h < 0.0:
+        print("    (Using forward difference at lower boundary)")
+        # --- Calculate reward at gamma + h ---
+        np.random.seed(seed)
+        policy1 = DLinUCB(d, delta, alpha, lambda_, s, gamma_plus_h, 'temp1', False, sigma_noise, False)
+        reward1 = -run_simulation_for_policy(policy1, **sim_params)
+        
+        # --- Calculate reward at gamma ---
+        np.random.seed(seed)
+        policy2 = DLinUCB(d, delta, alpha, lambda_, s, current_gamma, 'temp2', False, sigma_noise, False)
+        reward2 = -run_simulation_for_policy(policy2, **sim_params)
+
+        # Forward difference gradient
+        gradient = (reward1 - reward2) / h
+        
+    # Case 3: We are safely in the middle
+    else:
+        # --- Calculate reward at gamma + h ---
+        np.random.seed(seed)
+        policy1 = DLinUCB(d, delta, alpha, lambda_, s, gamma_plus_h, 'temp1', False, sigma_noise, False)
+        reward1 = -run_simulation_for_policy(policy1, **sim_params)
+        
+        # --- Calculate reward at gamma - h ---
+        np.random.seed(seed)
+        policy2 = DLinUCB(d, delta, alpha, lambda_, s, gamma_minus_h, 'temp2', False, sigma_noise, False)
+        reward2 = -run_simulation_for_policy(policy2, **sim_params)
+        
+        # Centered difference gradient (more accurate)
+        gradient = (reward1 - reward2) / (2 * h)
+        
+    return gradient    
  
 #%%
 if __name__ == "__main__":
@@ -80,11 +148,11 @@ if __name__ == "__main__":
     steps = 6000
     step_1 = 6000
     steps_calibration = 6000
-    n_mc_per_eval = 100  # Monte Carlo runs for each evaluation. Keep it small for speed.
+    n_mc_per_eval = 10 # Monte Carlo runs for each evaluation. Keep it small for speed.
     d = 2 # Dimension of the problem
     k = 50 # Number of arms available at each step
     alpha = 1
-    sigma_noise = 1
+    sigma_noise = 0
     verbose = False
     q = 5 # 5 percent quantiles used
     R = 1 # True parameter evolving on the unit circle
@@ -99,25 +167,26 @@ if __name__ == "__main__":
 
     # --- Meta-Learning settings ---
     meta_epochs = 100         # How many times we will update gamma
-    learning_rate = 1e-6  # How big of a step to take for gamma. Start small.
-    h = 0.0001                # The small perturbation for calculating the finite difference
+    learning_rate = 15e-6  # How big of a step to take for gamma. Start small.
+    h = 0.01  # The small perturbation for calculating the finite difference
 
     # Calculate the theoretical optimal gamma to use as our target benchmark
-    # Note: B_T, d, R, etc. are used from the global scope defined earlier in your script
+    # Note: B_T, d, R, etc. are used from the global scope defined earlier in the script
     B_T = get_B_T_smooth(step_1, R, angle_init, angle_end, d)
     theoretical_gamma = 1 - (B_T / (d * steps_calibration))**(2/3)
 
     # === 2. POLICY INITIALIZATION ===
 
     # Our learning policy, starting with a different gamma to see it learn
-    grad_policy = FiniteGradDLinUCB(d, delta, alpha, lambda_, s, 0.9, 'FiniteGrad-DLinUCB', False, sigma_noise, False)
+    grad_policy = FiniteGradDLinUCB(d, delta, alpha, lambda_, s, 0.5, 'FiniteGrad-DLinUCB', False, sigma_noise, False)
 
     # === 3. THE MAIN META-LEARNING LOOP ===
     
     gamma_history = []
     print("--- Starting Meta-Learning Experiment ---")
-    print(f"Target theoretical gamma for T=2000: {theoretical_gamma:.4f}")
+    print(f"Target theoretical gamma for T={steps} steps is {theoretical_gamma:.4f}")
     print(f"Learning Rate: {learning_rate:.7f}")
+    print(f"Monte Carlo runs: {n_mc_per_eval}")
     
     for epoch in range(meta_epochs):
         
@@ -132,36 +201,60 @@ if __name__ == "__main__":
             'sigma_noise': sigma_noise, 'R': R, 'angle_init': angle_init,
             'angle_end': angle_end, 'q': q, 't_saved': t_saved
         }
+        # Use a different seed for each epoch, but the same seed for both reward calculations within the epoch.
+        epoch_seed = epoch 
 
-        # 1. Evaluate performance at R(gamma)
-        # We use a temporary, new DLinUCB object for a clean evaluation
-        temp_policy_gamma = DLinUCB(d, delta, alpha, lambda_, s, current_gamma, 'temp_gamma', False, sigma_noise, False)
-        regret1 = run_simulation_for_policy(temp_policy_gamma, **sim_params)
-        reward1 = -regret1  # We want to maximize reward, which is minimizing regret
+        gradient = calculate_gradient(grad_policy, sim_params, h) # All the logic is now in the helper function
 
-        # 2. Evaluate performance at R(gamma + h)
-        temp_policy_gamma_h = DLinUCB(d, delta, alpha, lambda_, s, current_gamma + h, 'temp_gamma_h', False, sigma_noise, False)
-        regret2 = run_simulation_for_policy(temp_policy_gamma_h, **sim_params)
-        reward2 = -regret2
-        
-        # 3. Calculate the gradient and update the main policy's gamma
-        gradient = (reward2 - reward1) / h
         new_gamma = current_gamma + learning_rate * gradient  # Gradient ASCENT on reward
         grad_policy.update_gamma(new_gamma)
 
         print(f"Epoch {epoch+1}/{meta_epochs} | Current Gamma: {current_gamma:.4f} | Gradient: {gradient:.2f}")
+        
+#%%
+#Set path for latex (issue for me running in spyder otherwise)
+tex_path = '/Library/TeX/texbin' 
+os.environ['PATH'] = os.environ['PATH'] + ':' + tex_path
 
-    # === 4. PLOTTING THE RESULTS ===
-    print("--- Experiment Finished. Plotting results. ---")
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "serif",
+    "font.serif": ["Computer Modern Roman"], 
+    "font.size": 14  
+})
 
-    plt.figure(figsize=(8, 6))
-    plt.plot(gamma_history, marker='o', linestyle='--', label='Learned γ')
-    plt.axhline(y=theoretical_gamma, color='r', linestyle='--', label=f'Theoretical Optimal γ')
-    plt.xlabel('Meta-Learning Epoch')
-    plt.ylabel('Gamma Value')
-    plt.title('Convergence of Learned Gamma')
-    plt.ylim(0.0, 1.0) # Zoom in on a reasonable range for gamma
-    plt.legend()
-    plt.grid(True)
-    plt.show()
 
+fig, ax = plt.subplots(figsize=(7, 5)) 
+
+# Plot the learned gamma with markers every 5 epochs
+ax.plot(gamma_history, 
+        marker='o',          
+        linestyle='-',      
+        linewidth=2,        
+        markersize=6,    
+        markevery=5,         
+        label='Learned $\\gamma$') 
+
+# Plot the theoretical gamma line
+ax.axhline(y=theoretical_gamma, 
+           color='r', 
+           linestyle='--', 
+           linewidth=1.5, 
+           label=f'Theoretical Optimal $\\gamma$ ({theoretical_gamma:.4f})')
+
+# --- Labels, Title, and Ticks ---
+ax.set_xlabel('Meta-Learning Epoch', fontsize=14)
+ax.set_ylabel('Gamma Value ($\\gamma$)', fontsize=14)
+ax.set_title('Convergence of Learned Gamma', fontsize=16, pad=10)
+ax.tick_params(axis='both', which='major', labelsize=12) # Control tick label size
+
+# --- Aesthetics ---
+ax.set_ylim(0.5, 1.01) # Set y-limits
+ax.legend(loc='lower right', fontsize=12) # Control legend location and size
+ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7) # Lighter grid
+
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+
+plt.tight_layout()
+plt.show()
